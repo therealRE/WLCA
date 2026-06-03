@@ -1,0 +1,120 @@
+name: SeaClarityNet_V5A_UIEB
+model_type: ImageCleanModel
+scale: 1
+num_gpu: 1
+manual_seed: 100
+
+# dataset and data loader settings
+datasets:
+  train:
+    name: TrainSet
+    type: Dataset_PairedImage
+    dataroot_gt: /home/ljj/data/datasets/UIE/UIEB/train/gt
+    dataroot_lq: /home/ljj/data/datasets/UIE/UIEB/train/input
+    geometric_augs: true
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+    use_shuffle: true
+    num_worker_per_gpu: 8
+    batch_size_per_gpu: 8
+    mini_batch_sizes: [8]
+    iters: [150000]
+    gt_size: 320
+    gt_sizes: [320]
+    dataset_enlarge_ratio: 1
+    prefetch_mode: ~
+
+  val:
+    name: ValSet
+    type: Dataset_PairedImage
+    dataroot_gt: /home/ljj/data/datasets/UIE/UIEB/val/gt
+    dataroot_lq: /home/ljj/data/datasets/UIE/UIEB/val/input
+    io_backend:
+      type: disk
+
+network_g:
+  type: SeaClarityNetV5A_Final
+  use_online_prior: false
+  residual_init: 0.1
+  residual_decay_start: 0.35
+  residual_decay_end: 0.80
+  residual_decay_min: 0.75
+  refine_hidden: 48
+  refine_blocks: 3
+  gate_hidden: 32
+  spatial_gate_bias: 0.0
+
+path:
+  pretrain_network_g: ~
+  strict_load_g: false
+  resume_state: ~
+
+train:
+  total_iter: 150000
+  warmup_iter: 1000
+  use_grad_clip: true
+  grad_clip_val: 0.05
+
+  scheduler:
+    type: CosineAnnealingRestartCyclicLR
+    periods: [50000,100000]
+    restart_weights: [1,1]
+    eta_mins: [!!float 9e-5,!!float 1e-5]
+
+  optim_g:
+    type: Adam
+    lr: !!float 2e-4
+    #weight_decay: !!float 1e-4
+    betas: [0.9, 0.999]
+
+  # 现在可以像旧版那样单独配置各项 loss
+  pixel_opt:
+    type: L1Loss
+    loss_weight: 1.0
+    reduction: mean
+    #multi_scale_weights: [1.0, 1.0, 1.0]
+
+  perceptual_opt:
+    type: PerceptualLoss
+    layer_weights:
+      'conv5_4': 1
+    vgg_type: vgg19
+    use_input_norm: true
+    range_norm: false
+    perceptual_weight: 0.15
+    style_weight: 0.0
+    criterion: l1
+    #multi_scale_weights: [1.0, 1.0, 1.0]
+
+  ssim_opt:
+    type: SSIMLoss
+    loss_weight: 0.3
+    #multi_scale_weights: [1.0, 1.0, 1.0]
+
+val:
+  window_size: 4
+  val_freq: !!float 1e3
+  save_img: true
+  rgb2bgr: true
+  use_image: false
+  max_minibatch: 8
+  monitor_metric: psnr
+
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+
+logger:
+  print_freq: 200
+  save_checkpoint_freq: !!float 5e3
+  use_tb_logger: true
+  wandb:
+    project: uie
+    resume_id: ~
+
+dist_params:
+  backend: nccl
+  port: 29500
